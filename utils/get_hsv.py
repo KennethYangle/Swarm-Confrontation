@@ -8,7 +8,7 @@ def print_hsv(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         print(hue_image[y,x])
 
-if len(sys.argv) != 2:
+if len(sys.argv) != 2 or sys.argv[1] in ["-h", "--help"]:
     print("Usage: {0} PICTURE_PATH".format(sys.argv[0]))
     sys.exit(-1)
 cv2.namedWindow('image')

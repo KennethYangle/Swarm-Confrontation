@@ -10,59 +10,78 @@ import cv2
 class Allocation:
     def __init__(self):
         self.nums = 1
-        self.targets = 1
         self.width = 640
         self.height = 480
         self.home = []
+        self.low = np.array([[0, 100, 65], [80, 50, 130]])
+        self.high = np.array([[10, 200, 130], [100, 160, 255]])
+        self.targets = len(self.low)
 
 
-    def calc_centroid(self, dilated):
+    def calc_centroid(self, image_bgr, i):
         min_prop = 0.00001
 
-        M = cv2.moments(dilated, binaryImage=True)
-        if M["m00"] >= min_prop * self.height * self.width:
-            cx = int(M["m10"] / M["m00"])
-            cy = int(M["m01"] / M["m00"])
-            return cx, cy
-        else:
-            return -1, -1
-
+        image_hue = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+        cent = []
+        for t in range(self.targets):
+            th = cv2.inRange(image_hue, self.low[t], self.high[t])
+            dilated = cv2.dilate(th,
+                                cv2.getStructuringElement(
+                                    cv2.MORPH_ELLIPSE, (3, 3)),
+                                iterations=1)
+            # if t == 1:
+            #     cv2.imshow("Dilated{}".format(i), dilated)
+            
+            M = cv2.moments(dilated, binaryImage=True)
+            if M["m00"] >= min_prop * self.height * self.width:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                cent.append([cx, cy]) 
+            else:
+                cent.append([-1, -1])
+        return cent
 
     def reconstruction(self, feature, pose, angle):
         def quaternion2rotation(q):
             w, x, y, z = q[0], q[1], q[2], q[3]
             return np.array([[1-2*y*y-2*z*z, 2*x*y-2*w*z, 2*x*z+2*w*y],
-                            [2*x*y+2*w*z, 1-2*x*x-2*z*z, 2*y*z-2*w*x],
-                            [2*x*z-2*w*y, 2*y*z+2*w*x, 1-2*x*x-2*y*y]])
+                             [2*x*y+2*w*z, 1-2*x*x-2*z*z, 2*y*z-2*w*x],
+                             [2*x*z-2*w*y, 2*y*z+2*w*x, 1-2*x*x-2*y*y]])
 
         f, u0, v0 = self.width/2, self.width/2, self.height/2
         K = np.array([[f,0,u0], [0,f,v0], [0,0,1]])
         R_bc = np.array([[0,1,0], [0,0,1], [1,0,0]])
-        srcA, srcb = [], []
 
+        MM = []
         for i in range(self.nums):
-            if feature[i] == [-1, -1]:
-                continue
             vehicle_name = "Drone{}".format(i)
             R_be = quaternion2rotation(angle[i])
             R_ec = np.dot(R_bc, R_be.T)
             T_ce = np.array(pose[i]).reshape((-1,1))
+            MM.append( K.dot(R_ec).dot(np.hstack((np.identity(3),-T_ce))) )
             print("[{}]: R_ec: {}, T_ce: {}".format(vehicle_name, R_ec, T_ce))
 
-            M = K.dot(R_ec).dot(np.hstack((np.identity(3),-T_ce)))
-            xi, yi = feature[i][0], feature[i][1]
-            srcA.append([M[2,0]*xi-M[0,0], M[2,1]*xi-M[0,1], M[2,2]*xi-M[0,2]])
-            srcA.append([M[2,0]*yi-M[1,0], M[2,1]*yi-M[1,1], M[2,2]*yi-M[1,2]])
-            srcb.append([M[0,3]-M[2,3]*xi])
-            srcb.append([M[1,3]-M[2,3]*yi])
+        target_pos = []
+        for t in range(self.targets):
+            srcA, srcb = [], []
+            for i in range(self.nums):
+                if feature[i][t] == [-1, -1]:
+                    continue
+                xi, yi = feature[i][t][0], feature[i][t][1]
+                M = MM[i]
+                srcA.append([M[2,0]*xi-M[0,0], M[2,1]*xi-M[0,1], M[2,2]*xi-M[0,2]])
+                srcA.append([M[2,0]*yi-M[1,0], M[2,1]*yi-M[1,1], M[2,2]*yi-M[1,2]])
+                srcb.append([M[0,3]-M[2,3]*xi])
+                srcb.append([M[1,3]-M[2,3]*yi])
 
-        if len(srcA) >= 3:
-            ret, dstP = cv2.solve(np.array(srcA), np.array(srcb), flags=cv2.DECOMP_SVD)
-            if not ret:
-                print("Solve Failed!!!")
-            return dstP
-        else:
-            return np.array([-1,-1,-1])
+            if len(srcA) >= 4:
+                ret, dstP = cv2.solve(np.array(srcA), np.array(srcb), flags=cv2.DECOMP_SVD)
+                if not ret:
+                    print("Solve Failed!!!")
+                target_pos.append(dstP)
+            else:
+                target_pos.append(np.array([-1,-1,-1]))
+        return target_pos
 
 
     def main(self):
@@ -111,18 +130,8 @@ class Allocation:
                     image_bgr = cv2.cvtColor(image_rgba, cv2.COLOR_RGBA2BGR)
                     cv2.imshow("Image{}".format(i), image_bgr)
 
-                image_hue = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
-                low = np.array([0, 100, 65])
-                high = np.array([10, 200, 130])
-                th = cv2.inRange(image_hue, low, high)
-                dilated = cv2.dilate(th,
-                                    cv2.getStructuringElement(
-                                        cv2.MORPH_ELLIPSE, (3, 3)),
-                                    iterations=1)
-                # cv2.imshow("Dilated{}".format(i), dilated)
-
-                cx, cy = self.calc_centroid(dilated)
-                stash_feature.append([cx, cy])
+                cent = self.calc_centroid(image_bgr, i)
+                stash_feature.append(cent)
                 print("[{}]: feature: {}".format(vehicle_name, stash_feature[i]))
 
                 kinematics = client.simGetGroundTruthKinematics(
