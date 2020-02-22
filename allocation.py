@@ -42,7 +42,8 @@ class Allocation:
                 cent.append([-1, -1])
         return cent
 
-    def reconstruction(self, feature, pose, angle):
+
+    def reconstruction(self, feature, pose, angle) -> np.array:
         def quaternion2rotation(q):
             w, x, y, z = q[0], q[1], q[2], q[3]
             return np.array([[1-2*y*y-2*z*z, 2*x*y-2*w*z, 2*x*z+2*w*y],
@@ -85,6 +86,14 @@ class Allocation:
         return target_pos[1:]
 
 
+    def draw_reticle(self, image, feature):
+        x, y = feature[0], feature[1]
+        s = 10
+        cv2.rectangle(image, (x-s, y-s), (x+s, y+s), (0, 0, 255), 2)
+        cv2.line(image, (x, y-2*s), (x, y+2*s), (0, 0, 255), 2)
+        cv2.line(image, (x-2*s, y), (x+2*s, y), (0, 0, 255), 2)
+
+
     def main(self):
         settings_file = open("/home/zhenglong/Documents/AirSim/settings.json")
         settings = json.load(settings_file)
@@ -111,6 +120,7 @@ class Allocation:
             stash_pose = []
             stash_angle = []
             stash_feature = []
+            image_bgr = []
 
             for i in range(self.nums):
                 vehicle_name = "Drone{}".format(i)
@@ -128,10 +138,9 @@ class Allocation:
                     img1d = np.fromstring(response.image_data_uint8,
                                         dtype=np.uint8)
                     image_rgba = img1d.reshape(self.height, self.width, 4)
-                    image_bgr = cv2.cvtColor(image_rgba, cv2.COLOR_RGBA2BGR)
-                    cv2.imshow("Image{}".format(i), image_bgr)
+                    image_bgr.append( cv2.cvtColor(image_rgba, cv2.COLOR_RGBA2BGR) )
 
-                cent = self.calc_centroid(image_bgr, i)
+                cent = self.calc_centroid(image_bgr[i], i)
                 stash_feature.append(cent)
                 print("[{}]: feature: {}".format(vehicle_name, stash_feature[i]))
 
@@ -166,6 +175,11 @@ class Allocation:
             r = RHA2(stash_pose, target_pos)
             task = r.deal()
             print("task: {}".format(task[1]))
+            for i in range(self.nums):
+                target_pos = np.array(target_pos).tolist()
+                idx = target_pos.index(task[1][i].tolist())
+                self.draw_reticle(image_bgr[i], stash_feature[i][idx])
+                cv2.imshow("Image{}".format(i), image_bgr[i])
 
             key = cv2.waitKey(1) & 0xFF
             if (key == 27 or key == ord('q') or key == ord('x')):

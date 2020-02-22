@@ -7,6 +7,13 @@ class RHA2:
     def __init__(self, agent_pos, task_pos):
         self.agent_pos = agent_pos
         self.task_pos = task_pos
+
+        col = []
+        for i in range(len(self.task_pos)):
+            if all(self.task_pos[i] == np.array([-1, -1, -1])):
+                col.append(i)
+        self.task_pos = np.delete(self.task_pos, col, axis=0)
+
         self.m = len(self.agent_pos)
         self.n = len(self.task_pos)
 
@@ -79,7 +86,7 @@ class RHA2:
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    task_pos = np.array([(-19, -4, 0), (-4, 4, 0), (-3, 13, 0), (14, -15, 0), (16, 0, 0)])
+    task_pos = np.array([(-19, -4, 0), (-1, -1, -1), (-3, 13, 0), (14, -15, 0), (16, 0, 0)])
     agent_pos = np.array([(-13, 8, 0), (-12, 20, 0), (4, 4, 0), (18, -12, 0), (4, -19, 0),
                           (-19, 11, 0), (19, -8, 0), (-1, 9, 0), (-9, -8, 0), (11, -6, 0),
                           (-18, -17, 0), (-7, -16, 0), (12, 4, 0), (7, -1, 0)])
