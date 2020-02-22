@@ -16,8 +16,7 @@ class RHA2:
         cost = np.zeros([max_mn, max_mn])
         for i in range(self.m):
             for j in range(self.n):
-                cost[i][j] = np.sqrt((self.agent_pos[i][0] - self.task_pos[j][0])*(self.agent_pos[i][0] - self.task_pos[j][0]) + \
-                                     (self.agent_pos[i][1] - self.task_pos[j][1])*(self.agent_pos[i][1] - self.task_pos[j][1]))
+                cost[i][j] = np.linalg.norm(self.agent_pos[i]-self.task_pos[j])
         uavs_pos_record = []
         uavs_pos_record.append(self.agent_pos)
 
@@ -41,8 +40,7 @@ class RHA2:
                 cost = np.zeros([max_mn, max_mn])
                 for i in range(self.m):
                     for j in range(self.n):
-                        cost[i][j] = np.sqrt((self.agent_pos[i][0] - self.task_pos[j][0])*(self.agent_pos[i][0] - self.task_pos[j][0]) + \
-                                             (self.agent_pos[i][1] - self.task_pos[j][1])*(self.agent_pos[i][1] - self.task_pos[j][1]))
+                        cost[i][j] = np.linalg.norm(self.agent_pos[i]-self.task_pos[j])
 
             # 添加虚拟task，补齐cost矩阵
             for i in range(self.m):
@@ -50,7 +48,7 @@ class RHA2:
                     cost[i][j] = 0x3f3f3f3f
 
             row_ind, col_ind = linear_sum_assignment(cost)
-            tmp = np.zeros([m,2])
+            tmp = np.zeros(self.agent_pos.shape)
             for i in range(self.m):
                 if col_ind[i] < self.n:
                     tmp[i] = self.task_pos[col_ind[i]]   # 更新agent位置
@@ -61,7 +59,7 @@ class RHA2:
         
         else:
             k = self.m // self.n
-            tmp = np.zeros([m,2])
+            tmp = np.zeros(self.agent_pos.shape)
             for t in range(k):
                 row_ind, col_ind = linear_sum_assignment(cost[t*self.n:(t+1)*self.n,:self.n])
                 tmp[t*self.n:(t+1)*self.n] = self.task_pos[col_ind[:]]
@@ -81,9 +79,10 @@ class RHA2:
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    task_pos = np.array([(-19, -4), (-4, 4), (-3, 13), (14, -15), (16, 0)])
-    agent_pos = np.array([(-13, 8), (-12, 20), (4, 4), (18, -12), (4, -19),   (-19, 11), (19, -8),
-                         (-1, 9), (-9, -8), (11, -6),   (-18, -17), (-7, -16), (12, 4), (7, -1)])
+    task_pos = np.array([(-19, -4, 0), (-4, 4, 0), (-3, 13, 0), (14, -15, 0), (16, 0, 0)])
+    agent_pos = np.array([(-13, 8, 0), (-12, 20, 0), (4, 4, 0), (18, -12, 0), (4, -19, 0),
+                          (-19, 11, 0), (19, -8, 0), (-1, 9, 0), (-9, -8, 0), (11, -6, 0),
+                          (-18, -17, 0), (-7, -16, 0), (12, 4, 0), (7, -1, 0)])
     m, n = len(agent_pos), len(task_pos)
 
     r = RHA2(agent_pos, task_pos)

@@ -5,6 +5,7 @@ import airsim
 import sys
 sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
+from recursive_hungarian import RHA2
 
 
 class Allocation:
@@ -61,7 +62,7 @@ class Allocation:
             MM.append( K.dot(R_ec).dot(np.hstack((np.identity(3),-T_ce))) )
             print("[{}]: R_ec: {}, T_ce: {}".format(vehicle_name, R_ec, T_ce))
 
-        target_pos = []
+        target_pos = np.zeros((1,3))
         for t in range(self.targets):
             srcA, srcb = [], []
             for i in range(self.nums):
@@ -78,10 +79,10 @@ class Allocation:
                 ret, dstP = cv2.solve(np.array(srcA), np.array(srcb), flags=cv2.DECOMP_SVD)
                 if not ret:
                     print("Solve Failed!!!")
-                target_pos.append(dstP)
+                target_pos = np.vstack((target_pos, dstP.reshape((1,-1))))
             else:
-                target_pos.append(np.array([-1,-1,-1]))
-        return target_pos
+                target_pos = np.vstack((target_pos, np.array([-1,-1,-1])))
+        return target_pos[1:]
 
 
     def main(self):
@@ -157,8 +158,14 @@ class Allocation:
                     drivetrain=airsim.DrivetrainType.ForwardOnly,
                     vehicle_name=vehicle_name)
 
+            stash_pose = np.array(stash_pose)
+            stash_angle = np.array(stash_angle)
             target_pos = self.reconstruction(stash_feature, stash_pose, stash_angle)
             print("target pose: {}".format(target_pos))
+
+            r = RHA2(stash_pose, target_pos)
+            task = r.deal()
+            print("task: {}".format(task[1]))
 
             key = cv2.waitKey(1) & 0xFF
             if (key == 27 or key == ord('q') or key == ord('x')):
