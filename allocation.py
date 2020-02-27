@@ -17,6 +17,7 @@ class Allocation:
         self.low = np.array([[0, 100, 65], [80, 50, 130]])
         self.high = np.array([[10, 200, 130], [100, 160, 255]])
         self.targets = len(self.low)
+        self.th_Sam = 1e-5
 
 
     def calc_centroid(self, image_bgr, i):
@@ -43,6 +44,60 @@ class Allocation:
         return cent
 
 
+    def Sampson(self, R0, R1, T0, T1, pp0, pp1, K):
+        def skew(v):
+            return np.array([[0, -v[2,0], v[1,0]], 
+                             [v[2,0], 0, -v[0,0]], 
+                             [-v[1,0], v[0,0], 0]])
+
+        R_c1c0 = R0.dot(R1.T)
+        T_c1c0 = R0.dot(T1 - T0)
+        F = np.dot(skew(T_c1c0), R_c1c0)
+        pi0 = np.array(pp0+[1]).reshape((-1,1))
+        pi1 = np.array(pp1+[1]).reshape((-1,1))
+        # print(pi0, pi1)
+        p0 = np.linalg.inv(K).dot(pi0)
+        p1 = np.linalg.inv(K).dot(pi1)
+
+        num = (p0.T.dot(F).dot(p1))[0,0] ** 2
+        a = p0.T.dot(F)
+        b = F.dot(p1)
+        den = a[0,0]**2 + a[0,1]**2 + b[0,0]**2 + b[1,0]**2
+        return num/den
+
+
+    def match_feature(self, stash_feature, R_ec, T_ce, K):
+        features = []
+        for f in stash_feature[0]:  # 初始化feature
+            if f != [-1,-1]:
+                features.append([f])
+        for i in range(1, len(stash_feature)):  # 对于剩下的飞机
+            for j in range(len(stash_feature[i])):  # 每个飞机看到的特征
+                if stash_feature[i][j] == [-1, -1]: # 没看到跳过
+                    continue
+                store = []
+                for k in range(len(features)):       # 去已匹配的里面找
+                    for l in range(len(features[k])):    # 第k个目标找到第l架飞机确实看到
+                        if features[k][l] != [-1,-1]:
+                            break
+                    if features[k][l] == [-1,-1]:
+                        store.append(1e5)
+                        continue
+                    store.append(self.Sampson(R_ec[l], R_ec[i], T_ce[l], T_ce[i], features[k][l], stash_feature[i][j], K))
+                    # print(store[-1])     # 第i架飞机和第l架飞机，第k个特征与第j个特征辛普森距离
+                minSam = min(store)
+                minidx = store.index(minSam)
+                if minSam < self.th_Sam:
+                    features[minidx].append(stash_feature[i][j])
+                else:
+                    features.append([[-1, -1] for s in range(i)])
+                    features[-1].append(stash_feature[i][j])
+            for k in range(len(features)):
+                if len(features[k]) < i+1:
+                    features[k].extend([[-1,-1] for s in range(i+1-len(features[k]))])
+        print("features: {}".format(features))
+
+
     def reconstruction(self, feature, pose, angle) -> np.array:
         def quaternion2rotation(q):
             w, x, y, z = q[0], q[1], q[2], q[3]
@@ -55,13 +110,16 @@ class Allocation:
         R_bc = np.array([[0,1,0], [0,0,1], [1,0,0]])
 
         MM = []
+        R_ec, T_ce = [], []
         for i in range(self.nums):
             vehicle_name = "Drone{}".format(i)
             R_be = quaternion2rotation(angle[i])
-            R_ec = np.dot(R_bc, R_be.T)
-            T_ce = np.array(pose[i]).reshape((-1,1))
-            MM.append( K.dot(R_ec).dot(np.hstack((np.identity(3),-T_ce))) )
-            print("[{}]: R_ec: {}, T_ce: {}".format(vehicle_name, R_ec, T_ce))
+            R_ec.append( np.dot(R_bc, R_be.T) )
+            T_ce.append( np.array(pose[i]).reshape((-1,1)) )
+            MM.append( K.dot(R_ec[i]).dot(np.hstack((np.identity(3),-T_ce[i]))) )
+            print("[{}]: R_ec: {}, T_ce: {}".format(vehicle_name, R_ec[i], T_ce[i]))
+
+        features = self.match_feature(feature, R_ec, T_ce, K)
 
         target_pos = np.zeros((1,3))
         for t in range(self.targets):
