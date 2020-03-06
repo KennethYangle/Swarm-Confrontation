@@ -17,7 +17,7 @@ class Allocation:
         self.low = np.array([[0, 100, 65], [80, 50, 130]])
         self.high = np.array([[10, 200, 130], [100, 160, 255]])
         self.targets = len(self.low)
-        self.th_Sam = 1e-5
+        self.th_Sam = 5e-4  # 太小会多判出目标；太大会合并目标，最好要0号飞机看到所有目标，能保证的话取大一些更好
 
 
     def calc_centroid(self, image_bgr, i):
