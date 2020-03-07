@@ -14,24 +14,34 @@ class Allocation:
         self.width = 640
         self.height = 480
         self.home = []
-        self.low = np.array([[0, 100, 65], [80, 50, 130]])
-        self.high = np.array([[10, 200, 130], [100, 160, 255]])
+        self.low = np.array([[109, 27, 100], [174, 205, 50]])
+        self.high = np.array([[112, 40, 145], [177, 255, 110]])
         self.targets = len(self.low)
-        self.th_Sam = 5e-4  # 太小会多判出目标；太大会合并目标，最好要0号飞机看到所有目标，能保证的话取大一些更好
+        self.th_Sam = 1e-4  # 太小会多判出目标；太大会合并目标，最好要0号飞机看到所有目标，能保证的话取大一些更好
+        self.velocity = []
+        self.is_reallocation = True
+        self.config = {}
+        self.finished = set()
 
 
     def calc_centroid(self, image_bgr, i):
         min_prop = 0.00001
+        max_prop = 0.1
 
         image_hue = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
         cent = []
         for t in range(self.targets):
+            if t in self.finished:
+                cent.append([-1, -1])
+                continue
+
             th = cv2.inRange(image_hue, self.low[t], self.high[t])
-            dilated = cv2.dilate(th,
-                                cv2.getStructuringElement(
-                                    cv2.MORPH_ELLIPSE, (3, 3)),
-                                iterations=1)
-            # if t == 1:
+            # dilated = cv2.dilate(th,
+            #                     cv2.getStructuringElement(
+            #                         cv2.MORPH_ELLIPSE, (3, 3)),
+            #                     iterations=1)
+            dilated = cv2.medianBlur(th, 3)
+            # if t == 0:
             #     cv2.imshow("Dilated{}".format(i), dilated)
             
             M = cv2.moments(dilated, binaryImage=True)
@@ -41,6 +51,11 @@ class Allocation:
                 cent.append([cx, cy]) 
             else:
                 cent.append([-1, -1])
+
+            if M["m00"] >= max_prop * self.height * self.width:
+                self.is_reallocation  = True
+                self.finished.add(t)
+
         return cent
 
 
@@ -119,7 +134,7 @@ class Allocation:
             MM.append( K.dot(R_ec[i]).dot(np.hstack((np.identity(3),-T_ce[i]))) )
             print("[{}]: R_ec: {}, T_ce: {}".format(vehicle_name, R_ec[i], T_ce[i]))
 
-        features = self.match_feature(feature, R_ec, T_ce, K)
+        # features = self.match_feature(feature, R_ec, T_ce, K)
 
         target_pos = np.zeros((1,3))
         for t in range(self.targets):
@@ -152,6 +167,33 @@ class Allocation:
         cv2.line(image, (x-2*s, y), (x+2*s, y), (0, 0, 255), 2)
 
 
+    def interception(self, feature, velocity, angle):
+        def quaternion2yaw(q):
+            w, x, y, z = q[0], q[1], q[2], q[3]
+            return np.arctan2(2*(w*z+x*y), 1-2*(y*y+z*z))
+        kx, kz = 0.01, 0.01
+        ex, ey = feature[0] - self.width/2, feature[1] - self.height/2
+        yaw = quaternion2yaw(angle)
+        return velocity*np.cos(yaw) - kx*ex*np.sin(yaw), \
+               velocity*np.sin(yaw) + kx*ex*np.cos(yaw), \
+               kz*ey
+
+
+    def map_and_allocation(self, stash_feature, stash_pose, stash_angle):
+        target_pos = self.reconstruction(stash_feature, stash_pose, stash_angle)
+        print("target pose: {}".format(target_pos))
+
+        r = RHA2(stash_pose, target_pos)
+        task = r.deal()
+        print("task: {}".format(task[1]))
+
+        for i in range(self.nums):
+            vehicle_name = "Drone{}".format(i)
+            target_pos = np.array(target_pos).tolist()
+            idx = target_pos.index(task[1][i].tolist())
+            self.config[vehicle_name] = idx
+
+
     def main(self):
         settings_file = open("/home/zhenglong/Documents/AirSim/settings.json")
         settings = json.load(settings_file)
@@ -167,6 +209,9 @@ class Allocation:
 
         client = airsim.MultirotorClient()
         client.confirmConnection()
+
+        for i in range(self.nums):
+            self.velocity.append(i*0.5+1)
 
         for i in range(self.nums):
             vehicle_name = "Drone{}".format(i)
@@ -217,27 +262,36 @@ class Allocation:
                                                         stash_pose[i],
                                                         stash_angle[i]))
 
-                client.moveByVelocityAsync(
-                    vx=-5,
-                    vy=0,
-                    vz=0,
-                    duration=1,
-                    drivetrain=airsim.DrivetrainType.ForwardOnly,
-                    vehicle_name=vehicle_name)
+                # client.moveByVelocityAsync(
+                #     vx=0,
+                #     vy=1,
+                #     vz=0,
+                #     duration=1,
+                #     drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
+                #     vehicle_name=vehicle_name)
 
             stash_pose = np.array(stash_pose)
             stash_angle = np.array(stash_angle)
-            target_pos = self.reconstruction(stash_feature, stash_pose, stash_angle)
-            print("target pose: {}".format(target_pos))
 
-            r = RHA2(stash_pose, target_pos)
-            task = r.deal()
-            print("task: {}".format(task[1]))
+            if self.is_reallocation:
+                self.is_reallocation = False
+                self.map_and_allocation(stash_feature, stash_pose, stash_angle)
+            print("config: {}".format(self.config))
+
             for i in range(self.nums):
-                target_pos = np.array(target_pos).tolist()
-                idx = target_pos.index(task[1][i].tolist())
+                vehicle_name = "Drone{}".format(i)
+                idx = self.config[vehicle_name]
+
                 self.draw_reticle(image_bgr[i], stash_feature[i][idx])
                 cv2.imshow("Image{}".format(i), image_bgr[i])
+
+                if stash_feature[i][idx] == [-1,-1]:
+                    self.is_reallocation = True
+                    client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=vehicle_name)
+                    client.rotateByYawRateAsync(-30, 1, vehicle_name=vehicle_name)
+                else:
+                    vx, vy, vz = self.interception(stash_feature[i][idx], self.velocity[i], stash_angle[i])
+                    client.moveByVelocityAsync(vx, vy, vz, 1, vehicle_name=vehicle_name)
 
             key = cv2.waitKey(1) & 0xFF
             if (key == 27 or key == ord('q') or key == ord('x')):
