@@ -171,12 +171,13 @@ class Allocation:
         def quaternion2yaw(q):
             w, x, y, z = q[0], q[1], q[2], q[3]
             return np.arctan2(2*(w*z+x*y), 1-2*(y*y+z*z))
-        kx, kz = 0.01, 0.01
+        kx, kz = 0.1, 0.01
         ex, ey = feature[0] - self.width/2, feature[1] - self.height/2
         yaw = quaternion2yaw(angle)
-        return velocity*np.cos(yaw) - kx*ex*np.sin(yaw), \
-               velocity*np.sin(yaw) + kx*ex*np.cos(yaw), \
-               kz*ey
+        return velocity*np.cos(yaw), \
+               velocity*np.sin(yaw), \
+               kz*ey, \
+               kx*ex
 
 
     def map_and_allocation(self, stash_feature, stash_pose, stash_angle):
@@ -287,11 +288,14 @@ class Allocation:
 
                 if stash_feature[i][idx] == [-1,-1]:
                     self.is_reallocation = True
-                    client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name=vehicle_name)
-                    client.rotateByYawRateAsync(-30, 1, vehicle_name=vehicle_name)
+                    client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name = vehicle_name, 
+                                               drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
+                                               yaw_mode = airsim.YawMode(True, -30))
                 else:
-                    vx, vy, vz = self.interception(stash_feature[i][idx], self.velocity[i], stash_angle[i])
-                    client.moveByVelocityAsync(vx, vy, vz, 1, vehicle_name=vehicle_name)
+                    vx, vy, vz, yawrate = self.interception(stash_feature[i][idx], self.velocity[i], stash_angle[i])
+                    client.moveByVelocityAsync(vx, vy, vz, 1, vehicle_name = vehicle_name, 
+                                               drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
+                                               yaw_mode = airsim.YawMode(True, yawrate))
 
             key = cv2.waitKey(1) & 0xFF
             if (key == 27 or key == ord('q') or key == ord('x')):
