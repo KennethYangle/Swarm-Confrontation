@@ -22,6 +22,7 @@ class Allocation:
         self.is_reallocation = True
         self.config = {}
         self.finished = set()
+        self.stop_id = -1
 
 
     def calc_centroid(self, image_bgr, i):
@@ -43,7 +44,7 @@ class Allocation:
             dilated = cv2.medianBlur(th, 3)
             # if t == 0:
             #     cv2.imshow("Dilated{}".format(i), dilated)
-            
+
             M = cv2.moments(dilated, binaryImage=True)
             if M["m00"] >= min_prop * self.height * self.width:
                 cx = int(M["m10"] / M["m00"])
@@ -55,6 +56,7 @@ class Allocation:
             if M["m00"] >= max_prop * self.height * self.width:
                 self.is_reallocation  = True
                 self.finished.add(t)
+                self.stop_id = i
 
         return cent
 
@@ -275,6 +277,9 @@ class Allocation:
             stash_angle = np.array(stash_angle)
 
             if self.is_reallocation:
+                if len(self.finished) == self.targets:
+                    print("task finished!")
+                    break
                 self.is_reallocation = False
                 self.map_and_allocation(stash_feature, stash_pose, stash_angle)
             print("config: {}".format(self.config))
@@ -286,8 +291,9 @@ class Allocation:
                 self.draw_reticle(image_bgr[i], stash_feature[i][idx])
                 cv2.imshow("Image{}".format(i), image_bgr[i])
 
-                if stash_feature[i][idx] == [-1,-1]:
+                if stash_feature[i][idx] == [-1,-1] or i == self.stop_id:
                     self.is_reallocation = True
+                    self.stop_id = -1
                     client.moveByVelocityAsync(0, 0, 0, 1, vehicle_name = vehicle_name, 
                                                drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
                                                yaw_mode = airsim.YawMode(True, -30))
