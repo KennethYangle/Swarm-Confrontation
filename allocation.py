@@ -6,6 +6,7 @@ import sys
 sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 from recursive_hungarian import RHA2
+from freeflight import FreeFlight
 
 
 class Allocation:
@@ -210,6 +211,8 @@ class Allocation:
                               settings["Vehicles"][vehicle_name]["Y"],
                               settings["Vehicles"][vehicle_name]["Z"]])
 
+        ff = FreeFlight(self.home, [[0.0, 0.0, 0.0] for i in range(self.nums)])
+
         client = airsim.MultirotorClient()
         client.confirmConnection()
 
@@ -225,6 +228,7 @@ class Allocation:
         while True:
             stash_pose = []
             stash_angle = []
+            stash_vel = []
             stash_feature = []
             image_bgr = []
 
@@ -257,6 +261,11 @@ class Allocation:
                     kinematics.position.y_val + self.home[i][1],
                     kinematics.position.z_val + self.home[i][2]
                 ])
+                stash_vel.append([
+                    kinematics.linear_velocity.x_val,
+                    kinematics.linear_velocity.y_val,
+                    kinematics.linear_velocity.z_val
+                ])
                 stash_angle.append([
                     kinematics.orientation.w_val, kinematics.orientation.x_val,
                     kinematics.orientation.y_val, kinematics.orientation.z_val
@@ -272,6 +281,9 @@ class Allocation:
                 #     duration=1,
                 #     drivetrain=airsim.DrivetrainType.MaxDegreeOfFreedom,
                 #     vehicle_name=vehicle_name)
+
+            ff.update(stash_pose, stash_vel)
+            ff.controller()
 
             stash_pose = np.array(stash_pose)
             stash_angle = np.array(stash_angle)
@@ -299,7 +311,9 @@ class Allocation:
                                                yaw_mode = airsim.YawMode(True, -30))
                 else:
                     vx, vy, vz, yawrate = self.interception(stash_feature[i][idx], self.velocity[i], stash_angle[i])
-                    client.moveByVelocityAsync(vx, vy, vz, 1, vehicle_name = vehicle_name, 
+                    vrx, vry, vrz = ff.swarm[i].repulsion
+                    print("UAV{} repulsion: {}".format(i, ff.swarm[i].repulsion))
+                    client.moveByVelocityAsync(vx+vrx, vy+vry, vz+vrz, 1, vehicle_name = vehicle_name, 
                                                drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
                                                yaw_mode = airsim.YawMode(True, yawrate))
 

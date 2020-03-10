@@ -11,6 +11,9 @@ class UAV:
         self.waypoint = np.array(waypoint)
         self.ksi = self.filtered(self.position, self.velocity)
         self.arrive = False
+        # control command
+        self.attraction = np.array([0.0, 0.0, 0.0])
+        self.repulsion = np.array([0.0, 0.0, 0.0])
 
     def filtered(self, pos: np.array, vel: np.array) -> np.array:
         return pos + vel / self.l
@@ -47,13 +50,12 @@ class FreeFlight:
         commands = list()
         # for each UAV
         for i in range(self.nums):
-            command = np.array([0.0, 0.0, 0.0])
             # attractive potential
             ksi_wp = self.swarm[i].ksi - self.swarm[i].waypoint
-            cmd1 = self.sat(self.k1 * ksi_wp, self.vm)
-            command += cmd1
+            self.swarm[i].attraction = -1 * self.sat(self.k1 * ksi_wp, self.vm)
 
             # repulsive potentials
+            self.swarm[i].repulsion = np.array([0.0, 0.0, 0.0])
             for j in range(self.nums):
                 if j == i: continue
                 ksi_m = self.swarm[i].ksi - self.swarm[j].ksi
@@ -61,10 +63,9 @@ class FreeFlight:
                 den = (1+self.eps)*nksi_m - 2*self.rs*self.s(nksi_m/2/self.rs, self.eps_s)
                 num = self.dsigma_m(nksi_m)*den - self.sigma_m(nksi_m)*( 1+self.eps-2*self.rs*self.ds(nksi_m/2/self.rs, self.eps_s) )
                 b = self.k2 / nksi_m * num / den**2
-                cmdi = b * ksi_m
-                command += cmdi
+                self.swarm[i].repulsion += -1 * b * ksi_m
 
-            commands.append( (-1*self.sat(command, self.vm)).tolist() )
+            commands.append( (self.sat(self.swarm[i].attraction + self.swarm[i].repulsion, self.vm)).tolist() )
         return commands
 
     def update(self, positions: list, velocitys: list):
@@ -171,6 +172,9 @@ if __name__ == "__main__":
             vz = commands[i][2]
             client.moveByVelocityAsync(vx, vy, vz, 1, vehicle_name = vehicle_name)
         
+        for i in range(nums):
+            print("UAV{} attraction: {}, repulsion: {}".format(i, ff.swarm[i].attraction, ff.swarm[i].repulsion))
+
         positions = list()
         velocitys = list()
         for i in range(nums):
