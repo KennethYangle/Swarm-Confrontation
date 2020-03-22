@@ -1,0 +1,44 @@
+{
+    "Docs": "config.md",
+    "SimMode": "NetGun",
+    "LossProbability": 0.2,
+    "SuccessRate": 0.5,
+    "MinEnergy": 10,
+    "Vehicles": {
+        "Drone0": {
+            "Position": [-19, -4, 0],
+            "Energy": 100
+        },
+        "Drone1": {
+            "Position": [-1, -1, -1],
+            "Energy": 100
+        }
+    },
+    "Intruders": {
+        "IntrudeMode": "Respective",
+        "Intruder0": {
+            "Position": [-13, 8, 0],
+            "MotionModel": "linear",
+            "MotionParams": "Linear",
+            "Velocity": 10,
+            "OccurrenceTime": 1,
+            "Importance": 100
+        }
+    },
+    "Motions": {
+        "Linear": {
+            "Direction": [1, 1, 1],
+            "Velocity": 10
+        },
+        "RandomWalk": {
+            "Step": 1
+        },
+        "WayPoint": {
+            "WPs": [[10, 1, 2], [3, 2, 1]],
+            "Velocity": 10
+        }
+    },
+    "Visualize": {
+        "ImportanceScale": 0.1
+    }
+}
