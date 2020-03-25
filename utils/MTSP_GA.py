@@ -234,7 +234,7 @@ if __name__ == '__main__':
 
         t.append(min(result))
         if i % 100 == 0:
-            plt.pause(0.1)
+            plt.pause(0.001)
             min_entity = population[result.index(min(result))]
             ax.cla()
 
