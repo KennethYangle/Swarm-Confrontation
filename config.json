@@ -7,16 +7,16 @@
     "Vehicles": {
         "Drone0": {
             "Position": [-19, -4, 0],
-            "Energy": 100
+            "Energy": 1000
         },
         "Drone1": {
             "Position": [-1, -1, -1],
-            "Energy": 100
+            "Energy": 1000
         }
     },
     "IntrudeTactics": {
-        "IntrudeMode": "Respective",
-        "AssemblyPoint": [0, 0, 0],
+        "IntrudeMode": "Parallel",
+        "AssemblyPoint": [100, 100, 100],
         "Direction": [1, 1, 1],
         "Velocity": 2
     },
@@ -34,7 +34,15 @@
             "MotionModel": "RandomWalk",
             "MotionParams": "RandomWalk0",
             "Velocity": 10,
-            "Importance": 100,
+            "Importance": 50,
+            "EntryTime": 0
+        },
+        "Intruder2": {
+            "Position": [10, 10, 1],
+            "MotionModel": "WayPoint",
+            "MotionParams": "WayPoint0",
+            "Velocity": 10,
+            "Importance": 20,
             "EntryTime": 0
         }
     },
@@ -49,7 +57,8 @@
             "WPs": [[10, 1, 2], [3, 2, 1]]
         }
     },
-    "Visualize": {
-        "ImportanceScale": 0.1
+    "Visualizer": {
+        "ImportanceScale": 0.1,
+        "EnergyScale": 0.01
     }
 }

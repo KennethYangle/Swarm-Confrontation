@@ -4,19 +4,20 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
-from new_recursive_hungarian import RHA2
+from new_recursive_hungarian import RHA2, gen_task_lists
 
 class Drone:
     def __init__(self, name, position, energy):
         self.name = name
         self.position = np.array(position, dtype=np.float64)
         self.energy = energy
+        self.task_list = list()
 
     def __str__(self):
         return "name: {}; position: {}; energy: {}".format(self.name, self.position, self.energy)
 
     def update(self, interval, task_list, intruders_position):
-        pass
+        self.task_list = task_list
 
 
 class Intruder:
@@ -81,20 +82,27 @@ class Motions:
         self.cnt_wp = 0
 
 
+class Visualizer:
+    def __init__(self, importance_scale, energy_scale):
+        self.importance_scale = importance_scale
+        self.energy_scale = energy_scale
+
+
 class Theater:
-    def __init__(self, drones, intruders):
+    def __init__(self, drones, intruders, visualizer):
         self.num_drone = len(drones)
         self.num_intruder = len(intruders)
         self.drones = drones
         self.intruders = intruders
-        self.task_list = list()
+        self.task_lists = list()
         self.is_reallocate = True
+        self.visualizer = visualizer
         self.ax = plt.axes(projection='3d')
 
     def __str__(self):
-        prt = "[drones:]\n"
+        prt = "[drones]:\n"
         prt += "\n".join([d.__str__() for d in self.drones])
-        prt += "\n[intruders:]\n"
+        prt += "\n[intruders]:\n"
         prt += "\n".join([d.__str__() for d in self.intruders])
         return prt
 
@@ -107,14 +115,20 @@ class Theater:
         # 迭代时间
         self.interval = 1 / fps
         start_time = time.time()
-        # 更新敌我位置
-        self.update()
         # 需要再分配时计算
         if self.is_reallocate:
-            allocator = RHA2(self.get_agent_pos(), self.get_agent_energy(), self.get_task_pos(), self.get_task_importance())
+            agent_pos = self.get_agent_pos()
+            agent_energy = self.get_agent_energy()
+            task_pos = self.get_task_pos()
+            task_importance = self.get_task_importance()
+            allocator = RHA2(agent_pos, agent_energy, task_pos, task_importance)
             uavs_pos_record = allocator.deal()
+            self.task_lists = gen_task_lists(task_pos, uavs_pos_record)
+            print("[task_lists]: {}".format(self.task_lists))
+        # 更新敌我位置
+        self.update()
         # 画图
-        self.render(uavs_pos_record)
+        self.render()
         # 维持帧率
         sleep_time = start_time + self.interval - time.time()
         if sleep_time > 0: plt.pause(sleep_time)
@@ -129,9 +143,9 @@ class Theater:
             self.intruders[i].update(self.interval)
         # 更新我方位置
         for i in range(self.num_drone):
-            self.drones[i].update(self.interval, self.task_list, self.get_task_pos)
+            self.drones[i].update(self.interval, self.task_lists[i], self.get_task_pos)
 
-    def render(self, uavs_pos_record):
+    def render(self):
         """
         function: 画图
         :return: None
@@ -139,9 +153,25 @@ class Theater:
         print(self)
         print("="*10)
         self.ax.cla()
+        # 画task
         task_pos = self.get_task_pos()
         task_importance = self.get_task_importance()
-        self.ax.scatter(task_pos[:,0], task_pos[:,1], task_pos[:,2], task_importance)
+        self.ax.scatter(task_pos[:,0], task_pos[:,1], task_pos[:,2], linewidths = self.visualizer.importance_scale * task_importance)
+        # 画agent
+        agent_pos = self.get_agent_pos()
+        agent_energy = self.get_agent_energy()
+        self.ax.scatter(agent_pos[:,0], agent_pos[:,1], agent_pos[:,2], linewidths = self.visualizer.energy_scale * agent_energy)
+        # 画任务连线
+        # self.ax.plot(agent_pos[:,0], agent_pos[:,1], agent_pos[:,2])
+        plot_data = [[[] for j in range(self.num_drone)] for k in range(3)]
+        for k in range(3):      # 第k个轴，第j个飞机，第i个数据
+            for j in range(self.num_drone):
+                plot_data[k][j].append(agent_pos[j][k])
+                for i in range(len(self.task_lists[j])):
+                    plot_data[k][j].append(task_pos[self.task_lists[j][i]][k])
+        for j in range(self.num_drone):
+            self.ax.plot(plot_data[0][j], plot_data[1][j], plot_data[2][j])
+
 
     def get_agent_pos(self):
         """
@@ -206,12 +236,13 @@ def main(args):
     for key, value in config["Intruders"].items():
         intruders.append(Intruder(key, intrude_tactics, value["Position"], value["MotionModel"], 
             motions[value["MotionParams"]], value["Velocity"], value["Importance"], value.get("EntryTime", 0)))
-    theater = Theater(drones, intruders)
+    
+    visualizer = Visualizer(config["Visualizer"]["ImportanceScale"], config["Visualizer"]["EnergyScale"])
+    theater = Theater(drones, intruders, visualizer)
     print(theater)
     # 表演开始
     while True:
         theater.step()
-    plt.show()
     
 
 

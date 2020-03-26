@@ -35,6 +35,6 @@
 #### 3. `WayPoint`路径点
 * `WPs`: 二维列表，表示依次经过的路径点.
 
-## Visualize
+## Visualizer
 可视化相关的一些参数
 * `ImportanceScale`: 重要性在图上表示为圆的大小，该参数为比例系数

@@ -113,6 +113,19 @@ class RHA2:
         return uavs_pos_record
 
 
+def gen_task_lists(task_pos, uavs_pos_record):
+    task_dict = dict()
+    for i in range(len(task_pos)):
+        task_dict[tuple(task_pos[i])] = i
+    task_lists = [[] for i in range(len(uavs_pos_record[0]))]
+    for i in range(len(uavs_pos_record[0])):
+        for j in range(1, len(uavs_pos_record)):
+            t = task_dict[tuple(uavs_pos_record[j][i])]
+            if t not in task_lists[i]:
+                task_lists[i].append(t)
+    return task_lists
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     agent_pos = np.array([(-19, -4, 0), (-1, -1, -1), (-3, 13, 0), (14, -15, 0), (16, 0, 0)])
@@ -126,6 +139,8 @@ if __name__ == "__main__":
     r = RHA2(agent_pos, agent_energy, task_pos, task_importance)
     uavs_pos_record = r.deal()
     print(uavs_pos_record)
+    task_lists = gen_task_lists(task_pos, uavs_pos_record)
+    print(task_lists)
     path_len = len(uavs_pos_record)
     path_x = np.empty([m, path_len])
     path_y = np.empty([m, path_len])
