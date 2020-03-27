@@ -240,7 +240,14 @@ class Theater:
         if self.is_reallocate or self.is_finished: return
         print(self)
         print("="*10)
+        # 清楚上一帧，设置画布参数
         self.ax.cla()
+        self.ax.set_xlim(-20, 110)
+        self.ax.set_ylim(0, 100)
+        self.ax.set_zlim(-10, 20)
+        self.ax.set_xlabel('x', size=15)
+        self.ax.set_ylabel('y', size=15)
+        self.ax.set_zlabel('z', size=15)
         # 画task
         task_pos = self.get_task_pos()
         task_importance = self.get_task_importance()

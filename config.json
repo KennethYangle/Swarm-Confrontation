@@ -7,53 +7,94 @@
     "ArriveThreshold": 0.1,
     "Vehicles": {
         "Drone0": {
-            "Position": [-19, -4, 0],
+            "Position": [-10, 10, 0],
             "Velocity": 5,
-            "Energy": 1000
+            "Energy": 500
         },
         "Drone1": {
-            "Position": [-1, -1, -1],
+            "Position": [-10, 30, 0],
             "Velocity": 5,
-            "Energy": 1000
+            "Energy": 500
+        },
+        "Drone2": {
+            "Position": [-10, 50, 0],
+            "Velocity": 5,
+            "Energy": 500
         }
     },
     "IntrudeTactics": {
-        "IntrudeMode": "Parallel",
-        "AssemblyPoint": [100, 100, 100],
-        "Direction": [1, 1, 1],
+        "IntrudeMode": "Respective",
+        "AssemblyPoint": [0, 30, 0],
+        "Direction": [-1, 0, 0],
         "Velocity": 2
     },
     "Intruders": {
         "Intruder0": {
-            "Position": [-13, 8, 0],
+            "Position": [100, 0, 10],
             "MotionModel": "Linear",
             "MotionParams": "Linear0",
-            "Velocity": 10,
-            "Importance": 100,
+            "Velocity": 2,
+            "Importance": 1000,
             "EntryTime": 1
         },
         "Intruder1": {
-            "Position": [-8, 8, 1],
+            "Position": [90, 20, 10],
             "MotionModel": "RandomWalk",
             "MotionParams": "RandomWalk0",
-            "Velocity": 10,
-            "Importance": 50,
+            "Velocity": 2,
+            "Importance": 500,
             "EntryTime": 0
         },
         "Intruder2": {
-            "Position": [10, 10, 1],
-            "MotionModel": "WayPoint",
-            "MotionParams": "WayPoint0",
-            "Velocity": 10,
-            "Importance": 20,
+            "Position": [80, 40, 10],
+            "MotionModel": "Linear",
+            "MotionParams": "Linear1",
+            "Velocity": 2,
+            "Importance": 200,
+            "EntryTime": 0
+        },
+        "Intruder3": {
+            "Position": [90, 60, 10],
+            "MotionModel": "Linear",
+            "MotionParams": "Linear2",
+            "Velocity": 2,
+            "Importance": 200,
+            "EntryTime": 0
+        },
+        "Intruder4": {
+            "Position": [100, 80, 10],
+            "MotionModel": "Linear",
+            "MotionParams": "Linear3",
+            "Velocity": 2,
+            "Importance": 200,
+            "EntryTime": 0
+        },
+        "Intruder5": {
+            "Position": [100, 100, 10],
+            "MotionModel": "RandomWalk",
+            "MotionParams": "RandomWalk1",
+            "Velocity": 2,
+            "Importance": 500,
             "EntryTime": 0
         }
     },
     "Motions": {
         "Linear0": {
-            "Direction": [1, 1, 1]
+            "Direction": [-1, 1, 0]
+        },
+        "Linear1": {
+            "Direction": [-1, 0, 0]
+        },
+        "Linear2": {
+            "Direction": [-3, 1, 0]
+        },
+        "Linear3": {
+            "Direction": [-2, -1, 0]
         },
         "RandomWalk0": {
+            "Step": 2
+        },
+        "RandomWalk1": {
             "Step": 2
         },
         "WayPoint0": {
@@ -61,7 +102,7 @@
         }
     },
     "Visualizer": {
-        "ImportanceScale": 0.1,
+        "ImportanceScale": 0.01,
         "EnergyScale": 0.01
     }
 }
