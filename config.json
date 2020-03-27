@@ -4,13 +4,16 @@
     "LossProbability": 0.2,
     "SuccessRate": 0.5,
     "MinEnergy": 10,
+    "ArriveThreshold": 0.1,
     "Vehicles": {
         "Drone0": {
             "Position": [-19, -4, 0],
+            "Velocity": 5,
             "Energy": 1000
         },
         "Drone1": {
             "Position": [-1, -1, -1],
+            "Velocity": 5,
             "Energy": 1000
         }
     },

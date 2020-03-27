@@ -6,18 +6,68 @@ import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 from new_recursive_hungarian import RHA2, gen_task_lists
 
+class SimParams:
+    def __init__(self, sim_mode, loss_probability, success_rate, min_energy, arrive_threshold):
+        self.sim_mode = sim_mode
+        self.loss_probability = loss_probability
+        self.success_rate = success_rate
+        self.min_energy = min_energy
+        self.arrive_threshold = arrive_threshold
+
+
 class Drone:
-    def __init__(self, name, position, energy):
+    def __init__(self, name, position, velocity, energy, sim_params):
         self.name = name
         self.position = np.array(position, dtype=np.float64)
+        self.velocity = np.array(velocity, dtype=np.float64)
         self.energy = energy
+        self.sim_params = sim_params
         self.task_list = list()
+
+        if sim_params.sim_mode == "Clash":
+            sim_params.loss_probability = 1
 
     def __str__(self):
         return "name: {}; position: {}; energy: {}".format(self.name, self.position, self.energy)
 
     def update(self, interval, task_list, intruders_position):
+        """
+        function: 更新无人机状态，判断是否完成任务、是否毁坏
+        :param interval: 一帧时间间隔
+        :param task_list: 该飞机的任务列表
+        :param intruders_position: 任务坐标
+        :return: distroy_task: 完成的任务代号，没有为-1: int
+        :return: is_sacrificed: 任务完成后自身是否损坏了，或者自身是不是没电了: bool
+        :return: is_reallocate: 是否需要重规划: bool
+        """
         self.task_list = task_list
+        target = intruders_position[task_list[0]]
+        direction = target - self.position
+        direction /= np.linalg.norm(direction)
+        displacement = interval * self.velocity * direction
+
+        distroy_task, is_sacrificed, is_reallocate = -1, False, False
+        if self.arrive_task(self.position, target, displacement):
+            if np.random.uniform() < self.sim_params.success_rate:
+                distroy_task = task_list[0]
+                is_reallocate = True
+                if np.random.uniform() < self.sim_params.loss_probability:
+                    is_sacrificed = True
+        self.position += displacement
+        self.energy -= np.linalg.norm(displacement)
+        if self.energy < self.sim_params.min_energy:
+            is_sacrificed = True
+            is_reallocate = True
+        return distroy_task, is_sacrificed, is_reallocate
+
+    def arrive_task(self, position, target, displacement):
+        """判断是否到达任务点"""
+        pt = target - position
+        r = pt.dot(displacement) / displacement.dot(displacement)
+        if r > 1 or r < 0:
+            return False
+        else:
+            return True
 
 
 class Intruder:
@@ -39,17 +89,21 @@ class Intruder:
                 self.direction = self.motion.WPs[(self.motion.cnt_wp+1)%self.motion.num_wp] - self.motion.WPs[self.motion.cnt_wp]
                 self.direction /= np.linalg.norm(self.direction)
         elif self.intrude_tactics.intrude_mode == "Assemble":
+            if self.intrude_tactics.velocity > 0:
+                self.velocity = self.intrude_tactics.velocity
             self.motion_model = "Linear"
             self.direction = self.intrude_tactics.assembly_point - self.position
             self.direction /= np.linalg.norm(self.direction)
         elif self.intrude_tactics.intrude_mode == "Parallel":
+            if self.intrude_tactics.velocity > 0:
+                self.velocity = self.intrude_tactics.velocity
             self.motion_model = "Linear"
             self.direction = self.intrude_tactics.direction
         else:
             raise TypeError("Invalid intrude mode: {}".format(self.intrude_tactics.intrude_mode))
 
     def __str__(self):
-        return "name: {}, position: {}, motion_model: {}, motion: {}, velocity: {}, importance: {}, entry_time: {}".format(self.name, self.position, self.motion_model, self.motion, self.velocity, self.importance, self.entry_time)
+        return "name: {}, position: {}, motion_model: {}, motion: {}, velocity: {}, importance: {}, entry_time: {}".format(self.name, self.position, self.motion_model, self.motion.name, self.velocity, self.importance, self.entry_time)
 
     def update(self, interval):
         if self.motion_model == "Linear":
@@ -98,12 +152,15 @@ class Theater:
         self.is_reallocate = True
         self.visualizer = visualizer
         self.ax = plt.axes(projection='3d')
+        self.is_finished = False
 
     def __str__(self):
         prt = "[drones]:\n"
         prt += "\n".join([d.__str__() for d in self.drones])
         prt += "\n[intruders]:\n"
         prt += "\n".join([d.__str__() for d in self.intruders])
+        prt += "\n[task_lists]:\n"
+        prt += self.task_lists.__str__()
         return prt
 
     def step(self, fps=10):
@@ -125,13 +182,14 @@ class Theater:
             uavs_pos_record = allocator.deal()
             self.task_lists = gen_task_lists(task_pos, uavs_pos_record)
             print("[task_lists]: {}".format(self.task_lists))
+            self.is_reallocate = False
         # 更新敌我位置
         self.update()
         # 画图
         self.render()
         # 维持帧率
         sleep_time = start_time + self.interval - time.time()
-        if sleep_time > 0: plt.pause(sleep_time)
+        if sleep_time > 0 and not self.is_reallocate: plt.pause(sleep_time)
 
     def update(self):
         """
@@ -142,14 +200,44 @@ class Theater:
         for i in range(self.num_intruder):
             self.intruders[i].update(self.interval)
         # 更新我方位置
+        del_task = list()
+        del_drone = list()
         for i in range(self.num_drone):
-            self.drones[i].update(self.interval, self.task_lists[i], self.get_task_pos)
+            distroy_task, is_sacrificed, is_reallocate = self.drones[i].update(
+                self.interval, self.task_lists[i], self.get_task_pos())
+            if distroy_task >= 0:
+                del_task.append(distroy_task)
+                del self.task_lists[i][0]
+                for t in self.task_lists[i]:
+                    if t > distroy_task:
+                        t -= 1
+            if is_sacrificed:
+                del_drone.append(i)
+            if is_reallocate:
+                self.is_reallocate = True
+        if del_task:
+            self.intruders = np.delete(self.intruders, del_task, axis=0)
+            self.num_intruder = len(self.intruders)
+            if self.num_intruder == 0:
+                self.is_finished = True
+                print("All intruders are intercepted!!!")
+        if del_drone:
+            self.drones = np.delete(self.drones, del_drone, axis=0)
+            self.num_drone = len(self.drones)
+            del self.task_lists[del_drone[0]]
+            if self.num_drone == 0:
+                self.is_finished = True
+                if self.num_intruder == 0:
+                    print("We won by a nose.")
+                else:
+                    print("Failure is also we need.")
 
     def render(self):
         """
         function: 画图
         :return: None
         """
+        if self.is_reallocate or self.is_finished: return
         print(self)
         print("="*10)
         self.ax.cla()
@@ -220,9 +308,11 @@ def main(args):
     config = json.load(config_file)
     print(json.dumps(config, indent=4))
     # 生成舞台
+    sim_params = SimParams(config["SimMode"], config["LossProbability"], config["SuccessRate"], config["MinEnergy"], config["ArriveThreshold"])
+
     drones = list()
     for key, value in config["Vehicles"].items():
-        drones.append(Drone(key, value["Position"], value["Energy"]))
+        drones.append(Drone(key, value["Position"], value["Velocity"], value["Energy"], sim_params))
 
     config_tactics = config["IntrudeTactics"]
     intrude_tactics = IntrudeTactics(config_tactics["IntrudeMode"], config_tactics.get("AssemblyPoint", [0,0,0]),
@@ -235,13 +325,13 @@ def main(args):
     intruders = list()
     for key, value in config["Intruders"].items():
         intruders.append(Intruder(key, intrude_tactics, value["Position"], value["MotionModel"], 
-            motions[value["MotionParams"]], value["Velocity"], value["Importance"], value.get("EntryTime", 0)))
+            motions[value["MotionParams"]], value.get("Velocity", 0), value["Importance"], value.get("EntryTime", 0)))
     
     visualizer = Visualizer(config["Visualizer"]["ImportanceScale"], config["Visualizer"]["EnergyScale"])
     theater = Theater(drones, intruders, visualizer)
     print(theater)
     # 表演开始
-    while True:
+    while not theater.is_finished:
         theater.step()
     
 

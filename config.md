@@ -14,7 +14,7 @@
 ## IntrudeTactics
 `IntrudeMode`为敌人入侵的行为，包括
 * "各自为战": `Respective`，按照下面各入侵者配置运作;
-* "同一目标": `Assemble`，敌人攻击同一目标，目标位置为`AssemblyPoint`，速度都指向目标;
+* "同一目标": `Assemble`，敌人攻击同一目标，目标位置为`AssemblyPoint`，速度都指向目标，速度大小`Velocity`若指定则一致;
 * "平行推进": `Parallel`，敌人沿同一方向`Direction`行进，速度大小`Velocity`若指定则一致，否则按照各自属性.
 
 ## Intruders
