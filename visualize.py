@@ -7,7 +7,8 @@ from mpl_toolkits import mplot3d
 from new_recursive_hungarian import RHA2, gen_task_lists
 
 class SimParams:
-    def __init__(self, sim_mode, loss_probability, success_rate, min_energy, arrive_threshold):
+    def __init__(self, settings, sim_mode, loss_probability, success_rate, min_energy, arrive_threshold):
+        self.settings = settings
         self.sim_mode = sim_mode
         self.loss_probability = loss_probability
         self.success_rate = success_rate
@@ -143,7 +144,7 @@ class Visualizer:
 
 
 class Theater:
-    def __init__(self, drones, intruders, visualizer):
+    def __init__(self, drones, intruders, visualizer, sim_params, intrude_tactics, motions):
         self.num_drone = len(drones)
         self.num_intruder = len(intruders)
         self.drones = drones
@@ -151,6 +152,10 @@ class Theater:
         self.task_lists = list()
         self.is_reallocate = True
         self.visualizer = visualizer
+        self.sim_params = sim_params
+        self.intrude_tactics = intrude_tactics
+        self.motions = motions
+        self.count = 0
         self.ax = plt.axes(projection='3d')
         self.is_finished = False
 
@@ -170,8 +175,9 @@ class Theater:
         :return: None
         """
         # 迭代时间
-        self.interval = 1 / fps
         start_time = time.time()
+        self.interval = 1 / fps
+        self.count += 1
         # 需要再分配时计算
         if self.is_reallocate:
             agent_pos = self.get_agent_pos()
@@ -196,6 +202,17 @@ class Theater:
         function: 更新敌人位置和我方位置
         :return: None
         """
+        # 是否有新目标
+        pop_keys = []
+        for key, value in self.sim_params.settings["Intruders"].items():
+            if value["EntryTime"] <= self.count * self.interval:
+                self.intruders.append(Intruder(key, self.intrude_tactics, value["Position"], value["MotionModel"], 
+                    self.motions[value["MotionParams"]], value.get("Velocity", 0), value["Importance"], value["EntryTime"]))
+                self.is_reallocate = True
+                self.num_intruder += 1
+                pop_keys.append(key)
+        for k in pop_keys:
+            self.sim_params.settings["Intruders"].pop(k)
         # 更新敌人位置
         for i in range(self.num_intruder):
             self.intruders[i].update(self.interval)
@@ -315,7 +332,7 @@ def main(args):
     config = json.load(config_file)
     print(json.dumps(config, indent=4))
     # 生成舞台
-    sim_params = SimParams(config["SimMode"], config["LossProbability"], config["SuccessRate"], config["MinEnergy"], config["ArriveThreshold"])
+    sim_params = SimParams(config, config["SimMode"], config["LossProbability"], config["SuccessRate"], config["MinEnergy"], config["ArriveThreshold"])
 
     drones = list()
     for key, value in config["Vehicles"].items():
@@ -330,12 +347,17 @@ def main(args):
         motions[key] = Motions(key, value.get("Direction", [1,0,0]), value.get("Step", 0), value.get("WPs", []))
 
     intruders = list()
+    pop_keys = []
     for key, value in config["Intruders"].items():
-        intruders.append(Intruder(key, intrude_tactics, value["Position"], value["MotionModel"], 
-            motions[value["MotionParams"]], value.get("Velocity", 0), value["Importance"], value.get("EntryTime", 0)))
+        if value.get("EntryTime", 0) <= 0:
+            intruders.append(Intruder(key, intrude_tactics, value["Position"], value["MotionModel"], 
+                motions[value["MotionParams"]], value.get("Velocity", 0), value["Importance"], value.get("EntryTime", 0)))
+            pop_keys.append(key)
+    for k in pop_keys:
+        sim_params.settings["Intruders"].pop(k)
     
     visualizer = Visualizer(config["Visualizer"]["ImportanceScale"], config["Visualizer"]["EnergyScale"])
-    theater = Theater(drones, intruders, visualizer)
+    theater = Theater(drones, intruders, visualizer, sim_params, intrude_tactics, motions)
     print(theater)
     # 表演开始
     while not theater.is_finished:
