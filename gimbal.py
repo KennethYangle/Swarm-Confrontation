@@ -20,8 +20,8 @@ class IBVS:
         self.kz = 0.01
         self.velocity = 10
         # angluarVelocityThrottleController
-        self.k1, self.k2, self.k3, self.k4, self.k5, self.k6 = 0.01, 0.001, 1, 5, 0.1, -1
-        self.theta_d, self.phi_d = -np.pi/12, 0
+        self.k1, self.k2, self.k3, self.k4, self.k5, self.k6 = 0.02, 0.001, 2, 10, 0.01, -1
+        self.theta_d, self.phi_d = -np.pi/6, 0
         self.hover = 0.594
         self.g = 9.8
 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     high = np.array([17, 256, 256])
     servo = IBVS([width, height], [low, high])
     while not servo.is_finished:
-        responses = client.simGetImages([airsim.ImageRequest("fpv_cam", airsim.ImageType.Scene, False, False)])
+        responses = client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
         response = responses[0]
         if response is None:
             print("Camera is not returning image, please check airsim for error messages")
@@ -117,15 +117,15 @@ if __name__ == "__main__":
         q = kinematics.orientation
         vcy = kinematics.linear_velocity.z_val
 
-        cmd = servo.yawrateVzController(cent, q)
-        print(cmd)
-        client.moveByVelocityAsync(cmd[0], cmd[1], cmd[2], 1, 
-            drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
-            yaw_mode = airsim.YawMode(True, cmd[3]))
-
-        # cmd = servo.angluarVelocityThrottleController(cent, q, vcy)
+        # cmd = servo.yawrateVzController(cent, q)
         # print(cmd)
-        # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
+        # client.moveByVelocityAsync(cmd[0], cmd[1], cmd[2], 1, 
+        #     drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
+        #     yaw_mode = airsim.YawMode(True, cmd[3]))
+
+        cmd = servo.angluarVelocityThrottleController(cent, q, vcy)
+        print(cmd)
+        client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
         # client.moveByAngleRatesThrottleAsync(0.01, 0, 0.1, 0.65, 1)
         cv2.imshow("img", image_bgr)
