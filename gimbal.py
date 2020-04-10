@@ -5,7 +5,7 @@ import cv2
 import airsim
 
 class IBVS:
-    def __init__(self, size, target):
+    def __init__(self, size, target, cam_roll=0, cam_pitch=0, cam_yaw=0, T_cb=np.array([0,0,0])):
         # 图像相关
         self.width = size[0]
         self.height = size[1]
@@ -17,11 +17,11 @@ class IBVS:
         self.y0 = self.v0
         self.f = self.width/2
         # 相机相关
-        self.cam_roll = 0
-        self.cam_pitch = np.pi/12
-        self.cam_yaw = 0
+        self.cam_roll = cam_roll
+        self.cam_pitch = cam_pitch
+        self.cam_yaw = cam_yaw
         self.R_c0b = np.array([[0,0,1], [1,0,0], [0,1,0]])
-        self.T_cb = np.array([0,0,0])
+        self.T_cb = T_cb
         # 开始结束标志
         self.is_finished = False
         self.min_prop = 0.00001
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     width, height = 640, 480
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    servo = IBVS([width, height], [low, high])
+    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12)
     while not servo.is_finished:
         responses = client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
         response = responses[0]
@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
         # 相机安装或云台旋转
         client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
-        R_cc0 = to_RotationMatrix(servo.cam_yaw, servo.cam_pitch, servo.cam_roll)
+        R_cc0 = to_RotationMatrix(-servo.cam_yaw, servo.cam_pitch, servo.cam_roll)
         R_cb = servo.R_c0b.dot(R_cc0)
         r = R_cb.T.dot(np.array([1,0,0]))
         print("R_cb: {}".format(R_cb))
