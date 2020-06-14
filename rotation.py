@@ -111,7 +111,7 @@ class IBVS:
         - return:
             - cmd: [roll_rate, pitch_rate, yaw_rate, throttle, cam_rollrate, cam_pitchrate, cam_yawrate], 三轴角速度和油门(FRD)，期望相机姿态
         """
-        R_cc0 = to_RotationMatrix(-self.cam_yaw, self.cam_pitch, self.cam_roll)
+        R_cc0 = Euler_to_RotationMatrix(-self.cam_yaw, self.cam_pitch, self.cam_roll)
         R_cb = self.R_c0b.dot(R_cc0)
         r = R_cb.T.dot(np.array([1,0,0]))
         t = -R_cb.T.dot(self.T_cb)     # T_bc
@@ -151,8 +151,28 @@ class IBVS:
         self.cam_yaw += cam_yawrate * self.interval
         print("cam_roll: {}, cam_pitch: {}, cam_yaw: {}".format(self.cam_roll, self.cam_pitch, self.cam_yaw))
 
+    def rotationController(self, cent, R_be, v):
+        nob = np.array([self.f, cent[0]-self.u0, cent[1]-self.v0], dtype=np.float64)
+        nob /= np.linalg.norm(nob)
+        no = R_be.dot(nob)
+        ncb = np.array([1,0,0])
+        nc = R_be.dot(ncb)
+        print("no: {}, nc: {}".format(no, nc))
+        k1 = 0.1
+        we1 = k1*(np.cross(no, nc))
+        wb1 = R_be.T.dot(we1)
+        Rd = Euler_to_RotationMatrix(-0.52, 0, 0)
+        wb2 = vex(-0.1*(Rd.dot(R_be) - (Rd.dot(R_be).T)))
+        # wb = 10000/(self.u0/2-abs(cent[0]))**2 * wb1 + 0.1*wb2
+        wb = wb1 + 0.1*wb2
+        e3 = np.array([0,0,1])
+        n3 = R_be.dot(e3)
+        vd = 2 * no
+        F = max(n3.dot(self.hover+0.1*(v-vd)), self.hover)
+        return [wb[0], wb[1], wb[2], F]
 
-def to_RotationMatrix(pitch, roll, yaw):
+
+def Euler_to_RotationMatrix(pitch, roll, yaw):
     """
     - function: 欧拉角转旋转矩阵
     - params: 
@@ -168,10 +188,22 @@ def to_RotationMatrix(pitch, roll, yaw):
                     [2*x*y+2*w*z, 1-2*x*x-2*z*z, 2*y*z-2*w*x],
                     [2*x*z-2*w*y, 2*y*z+2*w*x, 1-2*x*x-2*y*y]])
 
+
+def Quaternion_to_RotationMatrix(q):
+    w, x, y, z = q.w_val, q.x_val, q.y_val, q.z_val
+    return np.array([[1-2*y*y-2*z*z, 2*x*y-2*w*z, 2*x*z+2*w*y],
+                    [2*x*y+2*w*z, 1-2*x*x-2*z*z, 2*y*z-2*w*x],
+                    [2*x*z-2*w*y, 2*y*z+2*w*x, 1-2*x*x-2*y*y]])
+
+
 def saturation(x, s):
     if x > s: return s
     elif x < -s: return -s
     else: return x
+
+
+def vex(A):
+    return np.array([A[2,1], A[0,2], A[1,0]])
 
 
 if __name__ == "__main__":
@@ -184,7 +216,7 @@ if __name__ == "__main__":
     width, height = 640, 480
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12)
+    servo = IBVS([width, height], [low, high])
     client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
 
     starttime = time.time()
@@ -204,7 +236,9 @@ if __name__ == "__main__":
         print(cent)
         kinematics = client.simGetGroundTruthKinematics()
         q = kinematics.orientation
+        v = np.array([kinematics.linear_velocity.x_val, kinematics.linear_velocity.y_val, kinematics.linear_velocity.z_val])
         vcy = kinematics.linear_velocity.z_val
+        R_be = Quaternion_to_RotationMatrix(q)
 
         # 速度控制
         # cmd = servo.yawrateVzController(cent, q)
@@ -213,31 +247,23 @@ if __name__ == "__main__":
         #     drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
         #     yaw_mode = airsim.YawMode(True, cmd[3]))
 
-        # # 相机安装或云台旋转
-        # client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
-        # R_cc0 = to_RotationMatrix(-servo.cam_yaw, servo.cam_pitch, servo.cam_roll)
-        # R_cb = servo.R_c0b.dot(R_cc0)
-        # r = R_cb.T.dot(np.array([1,0,0]))
-        # print("R_cb: {}".format(R_cb))
-        # print("r: {}".format(r))
-        # t = -R_cb.T.dot(servo.T_cb)     # T_bc
-        # servo.x0 = r[0]/r[2]*(servo.f-t[2]) + t[0] + servo.u0
-        # servo.y0 = r[1]/r[2]*(servo.f-t[2]) + t[1] + servo.v0
-        # print("x0: {}, y0: {}".format(servo.x0, servo.y0))
-
         # # 角速度控制
         # cmd = servo.angluarVelocityThrottleController(cent, q, vcy, R_cb)
         # print(cmd)
         # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
-        # 角速度控制+云台跟踪
-        cmd = servo.angluarVelocityThrottleWithGimbalLock(cent, q, vcy)
-        print(cmd)
-        client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)   # 添加负号从FRD转为FLU
-        interval = (time.time() - starttime) / cnt
-        servo.simGimbalRatate(cmd[4], cmd[5], cmd[6])
-        client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
-        print("interval: {}".format(interval))
+        # # 角速度控制+云台跟踪
+        # cmd = servo.angluarVelocityThrottleWithGimbalLock(cent, q, vcy)
+        # print(cmd)
+        # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)   # 添加负号从FRD转为FLU
+        # interval = (time.time() - starttime) / cnt
+        # servo.simGimbalRatate(cmd[4], cmd[5], cmd[6])
+        # client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
+        # print("interval: {}".format(interval))
+
+        # 旋转矩阵控制-1：直接对齐
+        cmd = servo.rotationController(cent, R_be, v)
+        client.moveByAngleRatesThrottleAsync(cmd[0], cmd[1], cmd[2], cmd[3], 1)
 
         cv2.imshow("img", image_bgr)
         cv2.waitKey(1)
