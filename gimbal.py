@@ -4,9 +4,10 @@ sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 import airsim
 import time
+from KF import KF
 
 class IBVS:
-    def __init__(self, size, target, cam_roll=0, cam_pitch=0, cam_yaw=0, T_cb=np.array([0,0,0])):
+    def __init__(self, size, target, cam_roll=0, cam_pitch=0, cam_yaw=0, T_cb=np.array([0,0,0]), is_filter=False):
         # 图像相关
         self.width = size[0]
         self.height = size[1]
@@ -40,13 +41,15 @@ class IBVS:
         self.theta_d, self.phi_d = -np.pi/6, 0
         self.hover = 0.594
         self.g = 9.8
+        # 图像滤波
+        self.is_filter = is_filter
 
     def calc_centroid(self, image_bgr):
         image_hue = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
         th = cv2.inRange(image_hue, self.low, self.high)
         dilated = cv2.dilate(th, 
             cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)), iterations=1)
-        cv2.imshow("dilated", dilated)
+        # cv2.imshow("dilated", dilated)
         M = cv2.moments(dilated, binaryImage=True)
         if M["m00"] >= self.min_prop * self.height * self.width:
             cx = int(M["m10"] / M["m00"])
@@ -184,8 +187,17 @@ if __name__ == "__main__":
     width, height = 640, 480
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12)
+    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12, is_filter=True)
     client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
+
+    if servo.is_filter:
+        # image filter initialize
+        dt = 0.03
+        F = np.array([[1,0,dt,0,0.5*dt*dt,0],[0,1,0,dt,0,0.5*dt*dt],[0,0,1,0,dt,0],[0,0,0,1,0,dt],[0,0,0,0,1,0],[0,0,0,0,0,1]])
+        H = np.hstack((np.identity(2), np.zeros((2,4))))
+        Q = np.identity(6) * 10
+        R = np.identity(2) * 10
+        flt = KF(F, H, dt, Q, R)
 
     starttime = time.time()
     cnt = 1
@@ -201,17 +213,25 @@ if __name__ == "__main__":
 
         # 获取图上目标坐标和飞机相关状态
         cent = servo.calc_centroid(image_bgr)
-        print(cent)
+        print("cent: {}".format(cent))
         kinematics = client.simGetGroundTruthKinematics()
         q = kinematics.orientation
         vcy = kinematics.linear_velocity.z_val
 
+        # 滤波更新
+        if servo.is_filter:
+            tmp = flt.update(cent)
+            cent_flt = tuple(int(a) for a in tmp)[:2]
+            print("cent_flt: {}".format(cent_flt))
+            cv2.circle(image_bgr, tuple(cent), 1, (0,255,0), 4)
+            cv2.circle(image_bgr, cent_flt, 1, (255,0,0), 4)
+
         # 速度控制
-        # cmd = servo.yawrateVzController(cent, q)
-        # print(cmd)
-        # client.moveByVelocityAsync(cmd[0], cmd[1], cmd[2], 1, 
-        #     drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
-        #     yaw_mode = airsim.YawMode(True, cmd[3]))
+        cmd = servo.yawrateVzController(cent_flt, q) if servo.is_filter else servo.yawrateVzController(cent, q)
+        print(cmd)
+        client.moveByVelocityAsync(cmd[0], cmd[1], cmd[2], 1, 
+            drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom, 
+            yaw_mode = airsim.YawMode(True, cmd[3]))
 
         # # 相机安装或云台旋转
         # client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
@@ -230,14 +250,14 @@ if __name__ == "__main__":
         # print(cmd)
         # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
-        # 角速度控制+云台跟踪
-        cmd = servo.angluarVelocityThrottleWithGimbalLock(cent, q, vcy)
-        print(cmd)
-        client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)   # 添加负号从FRD转为FLU
-        interval = (time.time() - starttime) / cnt
-        servo.simGimbalRatate(cmd[4], cmd[5], cmd[6])
-        client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
-        print("interval: {}".format(interval))
+        # # 角速度控制+云台跟踪
+        # cmd = servo.angluarVelocityThrottleWithGimbalLock(cent, q, vcy)
+        # print(cmd)
+        # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)   # 添加负号从FRD转为FLU
+        # interval = (time.time() - starttime) / cnt
+        # servo.simGimbalRatate(cmd[4], cmd[5], cmd[6])
+        # client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
+        # print("interval: {}".format(interval))
 
         cv2.imshow("img", image_bgr)
         cv2.waitKey(1)
