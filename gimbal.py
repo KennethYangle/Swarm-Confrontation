@@ -187,7 +187,7 @@ if __name__ == "__main__":
     width, height = 640, 480
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12, is_filter=True)
+    servo = IBVS([width, height], [low, high], cam_pitch=np.pi/12)
     client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
 
     if servo.is_filter:
