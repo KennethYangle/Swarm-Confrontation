@@ -159,7 +159,7 @@ class IBVS:
         nc = R_be.dot(ncb)
         print("no: {}, nc: {}".format(no, nc))
         k1 = 0.1
-        we1 = k1*(np.cross(no, nc))
+        we1 = k1*(np.cross(nc, no))
         wb1 = R_be.T.dot(we1)
         Rd = Euler_to_RotationMatrix(-0.52, 0, 0)
         wb2 = vex(-0.1*(Rd.dot(R_be) - (Rd.dot(R_be).T)))
