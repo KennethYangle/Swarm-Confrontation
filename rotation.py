@@ -1,6 +1,5 @@
 import numpy as np
 import sys
-sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 import airsim
 import time
@@ -36,7 +35,7 @@ class IBVS:
         self.kz = 0.01
         self.velocity = 10
         # angluarVelocityThrottleController
-        self.k1, self.k2, self.k3, self.k4, self.k5, self.k6 = 0.02, 0.001, 2, 10, 0.01, -2
+        self.k1, self.k2, self.k3, self.k4, self.k5, self.k6 = 0.05, 0.001, 2, 10, 0.01, -2
         self.theta_d, self.phi_d = -np.pi/6, 0
         self.hover = 0.594
         self.g = 9.8
@@ -151,8 +150,9 @@ class IBVS:
         self.cam_yaw += cam_yawrate * self.interval
         print("cam_roll: {}, cam_pitch: {}, cam_yaw: {}".format(self.cam_roll, self.cam_pitch, self.cam_yaw))
 
-    def rotationController(self, cent, R_be, v):
-        nob = np.array([self.f, cent[0]-self.u0, cent[1]-self.v0], dtype=np.float64)
+    def rotationController(self, cent, R_be, v, yaw):
+        ex, ey = cent[0] - self.u0, cent[1] - self.v0
+        nob = np.array([self.f, ex, ey], dtype=np.float64)
         nob /= np.linalg.norm(nob)
         no = R_be.dot(nob)
         ncb = np.array([1,0,0])
@@ -161,14 +161,23 @@ class IBVS:
         k1 = 0.1
         we1 = k1*(np.cross(nc, no))
         wb1 = R_be.T.dot(we1)
-        Rd = Euler_to_RotationMatrix(-0.52, 0, 0)
-        wb2 = vex(-0.1*(Rd.dot(R_be) - (Rd.dot(R_be).T)))
+        Rd = Euler_to_RotationMatrix(0.52, 0, yaw)
+        wb2 = vex(-0.1 * (Rd.dot(R_be) - (Rd.dot(R_be)).T))
         # wb = 10000/(self.u0/2-abs(cent[0]))**2 * wb1 + 0.1*wb2
-        wb = wb1 + 0.1*wb2
+        wb = wb1*(abs(ex)+abs(ey))/2 + 0.01*wb2
         e3 = np.array([0,0,1])
         n3 = R_be.dot(e3)
-        vd = 2 * no
-        F = max(n3.dot(self.hover+0.1*(v-vd)), self.hover)
+        # vd = 2 * no
+        # no = no[:, np.newaxis]
+        # vd = -1*((np.identity(3)-no.dot(no.T)).T.dot(nc))
+        vd = 3*no
+        print("vd: {}, v: {}".format(vd, v))
+        print("n3: {}".format(n3))
+        F = n3.dot(np.array([0,0,self.hover]) + 1*(v-vd))
+        print("F: {}".format(F))
+        # F = max(F, self.hover)
+        F = self.hover
+        # F = 0.8
         return [wb[0], wb[1], wb[2], F]
 
 
@@ -206,12 +215,20 @@ def vex(A):
     return np.array([A[2,1], A[0,2], A[1,0]])
 
 
+def task_takeoff(client, h=-3):
+    while True:
+        client.moveByAngleRatesThrottleAsync(0,0,0,1.0,0.1)
+        mav_state = client.getMultirotorState()
+        if  mav_state.kinematics_estimated.position.z_val <= h:
+            break
+
 if __name__ == "__main__":
     client = airsim.MultirotorClient()
     client.confirmConnection()
     client.enableApiControl(True)
     client.armDisarm(True)
-    client.takeoffAsync().join()
+    # client.takeoffAsync().join()
+    task_takeoff(client, -5)
 
     width, height = 640, 480
     low = np.array([0, 170, 100])
@@ -219,16 +236,16 @@ if __name__ == "__main__":
     servo = IBVS([width, height], [low, high])
     client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
 
-    starttime = time.time()
     cnt = 1
     while not servo.is_finished:
+        starttime = time.time()
         responses = client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
         response = responses[0]
         if response is None:
             print("Camera is not returning image, please check airsim for error messages")
             sys.exit(0)
         else:
-            img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+            img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
             image_bgr = img1d.reshape(height, width, 3)
 
         # 获取图上目标坐标和飞机相关状态
@@ -240,7 +257,7 @@ if __name__ == "__main__":
         vcy = kinematics.linear_velocity.z_val
         R_be = Quaternion_to_RotationMatrix(q)
 
-        # 速度控制
+        # # 速度控制
         # cmd = servo.yawrateVzController(cent, q)
         # print(cmd)
         # client.moveByVelocityAsync(cmd[0], cmd[1], cmd[2], 1, 
@@ -248,7 +265,7 @@ if __name__ == "__main__":
         #     yaw_mode = airsim.YawMode(True, cmd[3]))
 
         # # 角速度控制
-        # cmd = servo.angluarVelocityThrottleController(cent, q, vcy, R_cb)
+        # cmd = servo.angluarVelocityThrottleController(cent, q, vcy)
         # print(cmd)
         # client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
@@ -262,12 +279,14 @@ if __name__ == "__main__":
         # print("interval: {}".format(interval))
 
         # 旋转矩阵控制-1：直接对齐
-        cmd = servo.rotationController(cent, R_be, v)
-        client.moveByAngleRatesThrottleAsync(cmd[0], cmd[1], cmd[2], cmd[3], 1)
+        _, _, yaw = airsim.to_eularian_angles(q)
+        cmd = servo.rotationController(cent, R_be, v, yaw)
+        client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
         cv2.imshow("img", image_bgr)
         cv2.waitKey(1)
         cnt += 1
+        print("FPS: {}".format(1/(time.time()-starttime)))
 
     airsim.wait_key('Press any key to reset')
     client.reset()
