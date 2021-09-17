@@ -151,33 +151,50 @@ class IBVS:
         print("cam_roll: {}, cam_pitch: {}, cam_yaw: {}".format(self.cam_roll, self.cam_pitch, self.cam_yaw))
 
     def rotationController(self, cent, R_be, v, yaw):
+        k1, k2, k3, k4, k5 = 15, 0.5, 0.05, 3, 1         # k1=3 for wb1
+
         ex, ey = cent[0] - self.u0, cent[1] - self.v0
         nob = np.array([self.f, ex, ey], dtype=np.float64)
         nob /= np.linalg.norm(nob)
         no = R_be.dot(nob)
         ncb = np.array([1,0,0])
         nc = R_be.dot(ncb)
-        print("no: {}, nc: {}".format(no, nc))
-        k1 = 0.1
-        we1 = k1*(np.cross(nc, no))
-        wb1 = R_be.T.dot(we1)
-        Rd = Euler_to_RotationMatrix(0.52, 0, yaw)
-        wb2 = vex(-0.1 * (Rd.dot(R_be) - (Rd.dot(R_be)).T))
-        # wb = 10000/(self.u0/2-abs(cent[0]))**2 * wb1 + 0.1*wb2
-        wb = wb1*(abs(ex)+abs(ey))/2 + 0.01*wb2
+        # print("no: {}, nc: {}".format(no, nc))
+
+        # 速度和力
+        vd = np.linalg.norm(v+1) * no
+        ad = k5 * (vd - v)
         e3 = np.array([0,0,1])
         n3 = R_be.dot(e3)
-        # vd = 2 * no
-        # no = no[:, np.newaxis]
-        # vd = -1*((np.identity(3)-no.dot(no.T)).T.dot(nc))
-        vd = 3*no
+        r3d = self.g * e3 - ad
+        r3d /= np.linalg.norm(r3d)      # ge3-ad / ||ge3-ad||
+
         print("vd: {}, v: {}".format(vd, v))
-        print("n3: {}".format(n3))
-        F = n3.dot(np.array([0,0,self.hover]) + 1*(v-vd))
+        F = self.hover * r3d.dot(e3 - ad/self.g)
         print("F: {}".format(F))
-        # F = max(F, self.hover)
-        F = self.hover
-        # F = 0.8
+        # F = self.hover
+        
+        # 期望姿态
+        a11, a12, a13 = r3d[0], r3d[1], r3d[2]
+        psid = yaw
+        thetad0 = np.arctan2(np.cos(psid)*a11 + np.sin(psid)*a12, a13)
+        thetad1 = np.arctan2(-np.cos(psid)*a11 - np.sin(psid)*a12, -a13)
+        phid0 = np.arcsin(np.sin(psid)*a11 - np.cos(psid)*a12)
+        phid1 = phid0 - np.sign(phid0)*np.pi
+        # print(thetad0, thetad1, phid0, phid1)
+
+        # 角速度
+        we1 = k1*(np.cross(nc, no))
+        wb1 = R_be.T.dot(we1)
+        Rd = Euler_to_RotationMatrix(-thetad0, -phid0, psid)
+        wb2 = vex(-k2 * (Rd.dot(R_be) - (Rd.dot(R_be)).T))
+        p1 = (abs(ex)+abs(ey))/(self.u0+self.v0)
+        wb = wb1*p1 + wb2*(1-p1)
+        # wb = wb1
+        # wb = wb2
+        wb = sat_vec(wb, 1)
+        print("wb: {}".format(wb))
+
         return [wb[0], wb[1], wb[2], F]
 
 
@@ -210,6 +227,12 @@ def saturation(x, s):
     elif x < -s: return -s
     else: return x
 
+def sat_vec(a, s):
+    n = np.linalg.norm(a)
+    if n > s:
+        return a / n * s
+    else:
+        return a
 
 def vex(A):
     return np.array([A[2,1], A[0,2], A[1,0]])
