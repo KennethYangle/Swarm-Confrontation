@@ -3,6 +3,9 @@ import sys
 import cv2
 import airsim
 import time
+import pickle
+
+pos_recoder = []
 
 class IBVS:
     def __init__(self, size, target, cam_roll=0, cam_pitch=0, cam_yaw=0, T_cb=np.array([0,0,0])):
@@ -154,8 +157,11 @@ class IBVS:
         k1, k2, k3, k4, k5 = 15, 0.5, 0.05, 3, 1         # k1=3 for wb1
 
         ex, ey = cent[0] - self.u0, cent[1] - self.v0
+        R_cc0 = Euler_to_RotationMatrix(self.cam_pitch, self.cam_roll, self.cam_yaw)
+        print("R_cc0:", R_cc0)
         nob = np.array([self.f, ex, ey], dtype=np.float64)
         nob /= np.linalg.norm(nob)
+        nob = R_cc0.dot(nob)
         no = R_be.dot(nob)
         ncb = np.array([1,0,0])
         nc = R_be.dot(ncb)
@@ -253,9 +259,11 @@ if __name__ == "__main__":
     # client.takeoffAsync().join()
     task_takeoff(client, -5)
 
-    width, height = 640, 480
+    # width, height = 640, 480
+    width, height = 320, 240
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
+    # servo = IBVS([width, height], [low, high], cam_pitch=-np.pi/6)
     servo = IBVS([width, height], [low, high])
     client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
 
@@ -280,6 +288,8 @@ if __name__ == "__main__":
         vcy = kinematics.linear_velocity.z_val
         R_be = Quaternion_to_RotationMatrix(q)
 
+        p = [kinematics.position.x_val, kinematics.position.y_val, kinematics.position.z_val]
+        pos_recoder.append(p)
         # # 速度控制
         # cmd = servo.yawrateVzController(cent, q)
         # print(cmd)
@@ -311,6 +321,9 @@ if __name__ == "__main__":
         cnt += 1
         print("FPS: {}".format(1/(time.time()-starttime)))
 
+    f = open('pos_recoder_0.pkl', 'wb')
+    pickle.dump(pos_recoder, f)
+    f.close()
     airsim.wait_key('Press any key to reset')
     client.reset()
     client.simSetCameraOrientation("0", airsim.to_quaternion(0, 0, 0))

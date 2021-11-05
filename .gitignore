@@ -3,3 +3,4 @@ log/
 *.png
 __pycache__/
 *.pyc
+*.pkl
