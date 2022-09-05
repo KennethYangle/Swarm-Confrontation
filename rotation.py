@@ -259,13 +259,14 @@ if __name__ == "__main__":
     # client.takeoffAsync().join()
     task_takeoff(client, -5)
 
-    # width, height = 640, 480
-    width, height = 320, 240
+    width, height = 640, 480
+    # width, height = 320, 240
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    # servo = IBVS([width, height], [low, high], cam_pitch=-np.pi/6)
-    servo = IBVS([width, height], [low, high])
-    client.simSetCameraOrientation("0", airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
+    servo = IBVS([width, height], [low, high], cam_pitch=-np.pi/6)
+    # servo = IBVS([width, height], [low, high])
+    camera_pose = airsim.Pose(airsim.Vector3r(0, 0, 0), airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
+    client.simSetCameraPose("0", camera_pose)
 
     cnt = 1
     while not servo.is_finished:
@@ -313,7 +314,7 @@ if __name__ == "__main__":
 
         # 旋转矩阵控制-1：直接对齐
         _, _, yaw = airsim.to_eularian_angles(q)
-        cmd = servo.rotationController(cent, R_be, v, yaw)
+        cmd = servo.rotationController(cent, R_be, v, 0)
         client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
 
         cv2.imshow("img", image_bgr)
@@ -326,4 +327,4 @@ if __name__ == "__main__":
     f.close()
     airsim.wait_key('Press any key to reset')
     client.reset()
-    client.simSetCameraOrientation("0", airsim.to_quaternion(0, 0, 0))
+    client.simSetCameraPose("0", camera_pose)
