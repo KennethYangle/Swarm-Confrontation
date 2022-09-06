@@ -33,6 +33,7 @@ class IBVS:
         self.is_finished = False
         self.min_prop = 0.00001
         self.max_prop = 0.3
+        self.cnt_rot = 0
         # yawrateVzController
         self.kx = 0.1
         self.kz = 0.01
@@ -154,31 +155,32 @@ class IBVS:
         print("cam_roll: {}, cam_pitch: {}, cam_yaw: {}".format(self.cam_roll, self.cam_pitch, self.cam_yaw))
 
     def rotationController(self, cent, R_be, v, yaw):
-        k1, k2, k3, k4, k5 = 15, 0.5, 0.05, 3, 1         # k1=3 for wb1
+        k1, k2, k3, k4, k5 = 15, 1.0, 1.0, 0.5, 1.0         # k1=3 for wb1
 
         ex, ey = cent[0] - self.u0, cent[1] - self.v0
         R_cc0 = Euler_to_RotationMatrix(self.cam_pitch, self.cam_roll, self.cam_yaw)
-        print("R_cc0:", R_cc0)
-        nob = np.array([self.f, ex, ey], dtype=np.float64)
-        nob /= np.linalg.norm(nob)
-        nob = R_cc0.dot(nob)
-        no = R_be.dot(nob)
+        # print("R_cc0:", R_cc0)
+        ntb = np.array([self.f, ex, ey], dtype=np.float64)
+        ntb /= np.linalg.norm(ntb)
+        ntb = R_cc0.dot(ntb)
+        nt = R_be.dot(ntb)
         ncb = np.array([1,0,0])
         nc = R_be.dot(ncb)
-        # print("no: {}, nc: {}".format(no, nc))
+        ntd = nc    # 无特殊配置
+        # print("nt: {}, nc: {}".format(nt, nc))
 
         # 速度和力
-        vd = np.linalg.norm(v+1) * no
-        ad = k5 * (vd - v)
+        k2 = np.linalg.norm(v+1)
+        vd = k2 * nt
+        ad = k3 * (vd - v)
         e3 = np.array([0,0,1])
         n3 = R_be.dot(e3)
         r3d = self.g * e3 - ad
         r3d /= np.linalg.norm(r3d)      # ge3-ad / ||ge3-ad||
-
-        print("vd: {}, v: {}".format(vd, v))
+ 
+        # print("vd: {}, v: {}".format(vd, v))
         F = self.hover * r3d.dot(e3 - ad/self.g)
-        print("F: {}".format(F))
-        # F = self.hover
+        # print("F: {}".format(F))
         
         # 期望姿态
         a11, a12, a13 = r3d[0], r3d[1], r3d[2]
@@ -190,17 +192,24 @@ class IBVS:
         # print(thetad0, thetad1, phid0, phid1)
 
         # 角速度
-        we1 = k1*(np.cross(nc, no))
+        we1 = k1*(np.cross(ntd, nt))
         wb1 = R_be.T.dot(we1)
         Rd = Euler_to_RotationMatrix(-thetad0, -phid0, psid)
-        wb2 = vex(-k2 * (Rd.dot(R_be) - (Rd.dot(R_be)).T))
+        wb2 = vex(-k4 * (Rd.dot(R_be) - (Rd.dot(R_be)).T))
         p1 = (abs(ex)+abs(ey))/(self.u0+self.v0)
-        wb = wb1*p1 + wb2*(1-p1)
+        if self.cnt_rot % 8 == 0:
+            k5 = 1.0
+            wb = k5*wb1*p1 + wb2*(1-p1)
+        else:
+            k5 = 0.0
+            wb = wb2
+        # wb = wb1*p1 + wb2*(1-p1)
         # wb = wb1
         # wb = wb2
         wb = sat_vec(wb, 1)
-        print("wb: {}".format(wb))
+        # print("wb: {}".format(wb))
 
+        self.cnt_rot += 1
         return [wb[0], wb[1], wb[2], F]
 
 
@@ -263,8 +272,8 @@ if __name__ == "__main__":
     # width, height = 320, 240
     low = np.array([0, 170, 100])
     high = np.array([17, 256, 256])
-    servo = IBVS([width, height], [low, high], cam_pitch=-np.pi/6)
-    # servo = IBVS([width, height], [low, high])
+    # servo = IBVS([width, height], [low, high], cam_pitch=-np.pi/6)
+    servo = IBVS([width, height], [low, high], cam_pitch=0)
     camera_pose = airsim.Pose(airsim.Vector3r(0, 0, 0), airsim.to_quaternion(servo.cam_pitch, servo.cam_roll, servo.cam_yaw))
     client.simSetCameraPose("0", camera_pose)
 
@@ -282,7 +291,7 @@ if __name__ == "__main__":
 
         # 获取图上目标坐标和飞机相关状态
         cent = servo.calc_centroid(image_bgr)
-        print(cent)
+        # print("cent: {}".format(cent))
         kinematics = client.simGetGroundTruthKinematics()
         q = kinematics.orientation
         v = np.array([kinematics.linear_velocity.x_val, kinematics.linear_velocity.y_val, kinematics.linear_velocity.z_val])
@@ -314,14 +323,18 @@ if __name__ == "__main__":
 
         # 旋转矩阵控制-1：直接对齐
         _, _, yaw = airsim.to_eularian_angles(q)
-        cmd = servo.rotationController(cent, R_be, v, 0)
+        yaw_d = 0.
+        # yaw_d = yaw
+        cmd = servo.rotationController(cent, R_be, v, yaw_d)
         client.moveByAngleRatesThrottleAsync(cmd[0], -cmd[1], -cmd[2], cmd[3], 1)
+        print("yaw_d: {}, yaw: {}".format(yaw_d, yaw))
 
         cv2.imshow("img", image_bgr)
         cv2.waitKey(1)
         cnt += 1
-        print("FPS: {}".format(1/(time.time()-starttime)))
+        # print("FPS: {}".format(1/(time.time()-starttime)))
 
+    print("finished pos: {}".format(pos_recoder[-1]))
     f = open('pos_recoder_0.pkl', 'wb')
     pickle.dump(pos_recoder, f)
     f.close()
