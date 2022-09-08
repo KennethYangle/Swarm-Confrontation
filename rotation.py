@@ -154,7 +154,7 @@ class IBVS:
         self.cam_yaw += cam_yawrate * self.interval
         print("cam_roll: {}, cam_pitch: {}, cam_yaw: {}".format(self.cam_roll, self.cam_pitch, self.cam_yaw))
 
-    def rotationController(self, cent, R_be, v, yaw):
+    def rotationController(self, cent, R_be, v, yaw_d):
         k1, k2, k3, k4, k5 = 15, 1.0, 1.0, 0.5, 1.0         # k1=3 for wb1
 
         ex, ey = cent[0] - self.u0, cent[1] - self.v0
@@ -184,7 +184,7 @@ class IBVS:
         
         # 期望姿态
         a11, a12, a13 = r3d[0], r3d[1], r3d[2]
-        psid = yaw
+        psid = yaw_d
         thetad0 = np.arctan2(np.cos(psid)*a11 + np.sin(psid)*a12, a13)
         thetad1 = np.arctan2(-np.cos(psid)*a11 - np.sin(psid)*a12, -a13)
         phid0 = np.arcsin(np.sin(psid)*a11 - np.cos(psid)*a12)
