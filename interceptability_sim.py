@@ -3,7 +3,6 @@ from turtle import width
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
-from regex import V0
 
 class RigidBody:
     def __init__(self, x0=[0., 0., 0.], v0=[0., 0., 0.], m=1.0, tau_m=10, tau_tm=10) -> None:
