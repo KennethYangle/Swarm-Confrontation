@@ -34,11 +34,11 @@ class RigidBody:
             f_net = self.m*self.g + f - self.m*self.at
             f_net_hor = nt.dot(f_net) * nt
             f_net_ver = f_net - f_net_hor
-            if np.dot(np.cross(f_net_ver, nt), np.cross(self.v, nt)) < 0 and np.linalg.norm(f_net_ver) > max_int and f_net_hor[0]/nt[0] > 1:
+            if np.dot(np.cross(f_net_ver, nt), np.cross(self.v, nt)) < 0 and np.linalg.norm(f_net_ver) > 1 and f_net_hor[0]/nt[0] > 0 and np.linalg.norm(f_net_hor) > max_int:
                 self.f = f
                 self.f_net = f_net
                 self.a_net = self.f_net / self.m
-                max_int = np.linalg.norm(f_net_ver)
+                max_int = np.linalg.norm(f_net_hor)
 
         min_esc = 1e10
         for ii in range(3600):
@@ -81,9 +81,9 @@ def sat(a, s):
 
 if __name__ == "__main__":
     x0 = [10., 5., 0.]
-    v0 = [-2., 1., 0.]
+    v0 = [-1., 0.5, 0.]
     m = 1.0
-    tau_m = 1.5     # 2可拦截；1.3刚好逃逸；0.8快速逃逸，加速能力小于目标
+    tau_m = 2     # 2可拦截；1.3刚好逃逸；0.8快速逃逸，加速能力小于目标
     tau_tm = 0.5
     dt = 0.01
 
