@@ -27,6 +27,19 @@ class RigidBody:
         self.f_net = self.m*self.g + self.f - self.m*self.at
         self.a_net = self.f_net / self.m
 
+        max_int = -1e10
+        for ii in range(3600):
+            rad = ii / 3600 * 2 * np.pi
+            f = self.tau_m*self.m*np.linalg.norm(self.g) * np.array([np.cos(rad), np.sin(rad), 0])
+            f_net = self.m*self.g + f - self.m*self.at
+            f_net_hor = nt.dot(f_net) * nt
+            f_net_ver = f_net - f_net_hor
+            if np.dot(np.cross(f_net_ver, nt), np.cross(self.v, nt)) < 0 and np.linalg.norm(f_net_ver) > max_int and f_net_hor[0]/nt[0] > 1:
+                self.f = f
+                self.f_net = f_net
+                self.a_net = self.f_net / self.m
+                max_int = np.linalg.norm(f_net_ver)
+
         min_esc = 1e10
         for ii in range(3600):
             rad = ii / 3600 * 2 * np.pi
@@ -36,6 +49,7 @@ class RigidBody:
                 self.at = at
                 min_esc = esc
         # print(self.x, self.v, a)
+
 
         self.x += self.v * dt
         self.v += self.a_net * dt
@@ -69,7 +83,7 @@ if __name__ == "__main__":
     x0 = [10., 5., 0.]
     v0 = [-2., 1., 0.]
     m = 1.0
-    tau_m = 2     # 2可拦截；1.3刚好逃逸；0.8快速逃逸，加速能力小于目标
+    tau_m = 1.5     # 2可拦截；1.3刚好逃逸；0.8快速逃逸，加速能力小于目标
     tau_tm = 0.5
     dt = 0.01
 
