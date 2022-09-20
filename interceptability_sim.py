@@ -34,7 +34,8 @@ class RigidBody:
             f_net = self.m*self.g + f - self.m*self.at
             f_net_hor = nt.dot(f_net) * nt
             f_net_ver = f_net - f_net_hor
-            if np.dot(np.cross(f_net_ver, nt), np.cross(self.v, nt)) < 0 and np.linalg.norm(f_net_ver) > 1 and f_net_hor[0]/nt[0] > 0 and np.linalg.norm(f_net_hor) > max_int:
+            # 条件1：f_net_ver和v在nt两侧；条件2：垂直方向f_net_ver收敛力度大于80倍夹角而小于1（上限，防溢出）；条件3：f_net_hor与nt同向；条件4：找满足前面条件的最大f_net_hor前向收敛力度
+            if np.dot(np.cross(f_net_ver, nt), np.cross(self.v, nt)) < 0 and np.linalg.norm(f_net_ver) > min(80*np.arccos(self.v.dot(nt)/np.linalg.norm(self.v)), 1) and f_net_hor[0]/nt[0] > 0 and np.linalg.norm(f_net_hor) > max_int:
                 self.f = f
                 self.f_net = f_net
                 self.a_net = self.f_net / self.m
